@@ -416,3 +416,133 @@ The next step requires some working brain, try understanding it first before try
 Go into your `interactionCreate.js` file. Define our Schema `User` and add it into the `command`.
 You can also use your own and just integrate the User into it.
 It's necessary so the bot can separate premium users of normal users.
+```js
+// Check the guide at the beginning if you don't understand paths.
+const User = require("../Models/User");
+const cmd = client.Commands.get(interaction.commandName);
+if (cmd) {
+  let user = client.userSettings.get(interaction.user.id);
+  // If there is no user, create it in the Database as "newUser"
+  if (!user) {
+    const findUser = await User.findOne({ Id: interaction.user.id });
+    if (!findUser) {
+      const newUser = await User.create({ Id: interaction.user.id });
+      client.userSettings.set(interaction.user.id, newUser);
+      user = newUser;
+    } else return;
+  }
+
+  if (cmd.premium && user && !user.isPremium) {
+    interaction.followUp(`You are not premium user`);
+  } else {
+    cmd.run({ client, interaction, args });
+  }
+}
+```
+
+Awesome. We now want the Bot define the User once going online.
+Go into your `ready.js` event. It's where the Bot is booting up.
+
+```js
+const client = require("..");
+const User = require("../Models/User");
+
+client.on("ready", async () => {
+  console.log(`${client.user.username} Is Online`);
+  client.user.setActivity({
+    name: `KABIR CODING ME RIGHT NOW`,
+    type: "WATCHING",
+  });
+
+  // codde
+  const users = await User.find();
+  for (let user of users) {
+    client.userSettings.set(user.Id, user);
+  }
+
+  require('../handlers/premium')(client)
+});
+
+```
+
+Awesome. We are one step away!
+You might have seen a handler called `premium` in the last code snippet, let's work that out.
+
+Your bot has at least one handler called `command.js` right?
+(`events` is also possible).
+Go ahead and create a file called `premium.js` within the `handlers` folder.
+The path may look like this: `src/handlers/premium.js`
+
+```js
+// Define the User from our Database Schema
+const User = require("../Models/User");
+const cron = require("node-cron");
+
+// set the schedule, find the user in the database.
+module.exports = async (client) => {
+  cron.schedule("*/60 * * * * *", async () => {
+    await User.find({ isPremium: true }, async (err, users) => {
+      if (users && users.length) {
+        // Set the expire Date and Time for our User + Code
+        for (let user of users) {
+          if (Date.now() >= user.premium.expiresAt) {
+            // Default: The user is not a premium User
+            user.isPremium = false;
+            user.premium.redeemedBy = [];
+            user.premium.redeemedAt = null;
+            user.premium.expiresAt = null;
+            user.premium.plan = null;
+
+            // Save the updated user within the usersSettings.
+            const newUser = await user.save({ new: true }).catch(() => {});
+            client.usersSettings.set(newUser.Id, newUser);
+          }
+        }
+      }
+    });
+  });
+};
+```
+
+AAAAND BOOM. We are done. You have successfully setup your own Premium System for your Discord Bot.
+Go ahead and start your Bot. Once online, run `/gencode daily`.
+
+<p align="center">
+  <a href="https://discord.gg/PcUVWApWN3" target="blank"><img src="https://media.discordapp.net/attachments/936140005900947466/939186232909496394/gencode.png" width="700" height="300" alt="Generate Code" /></a>
+</p>
+
+This will create a premium code that expires in exactly 24hours.
+Redeem the Code with `/redeem <code>`. :)
+
+<p align="center">
+  <a href="https://discord.gg/PcUVWApWN3" target="blank"><img src="https://media.discordapp.net/attachments/936140005900947466/939186233144385536/redeem.png" width="700" height="300" alt="Redeem Code" /></a>
+</p>
+
+You might wonder, how you can strict a command down to only premium Users.
+I will show you one example, it's very easy.
+
+```js
+const { Command } = require("reconlx");
+const { MessageEmbed } = require("discord.js");
+const ee = require("../../settings/embed.json");
+const config = require("../../settings/config.json");
+
+module.exports = new Command({
+  // options
+  name: "ping",
+  description: `Show Bot Ping`,
+  userPermissions: ["SEND_MESSAGES"],
+  category: "Information",
+  premium: true,
+  // command start
+  run: async ({ client, interaction, args }) => {
+    interaction.followUp({
+      embeds: [new MessageEmbed().setTitle(`Ping :- ${client.ws.ping}`)],
+    });
+  },
+});
+```
+
+Congrats. You now have a fully working premium system integrated.
+
+Hopefully it helped you to make your bot a little bit better :)
